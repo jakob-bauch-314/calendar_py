@@ -1,4 +1,4 @@
-import cal
+import ics
 import scraper
 
 semesters = [
@@ -7,10 +7,19 @@ semesters = [
     "Wintersemester 2024 / 2025"
 ]
 
-html_list = scraper.getScheduleHtml(input("name: "), input("password: "), semesters)
-output = sum(map(cal.calendar.import_from_html, html_list), start=cal.calendar([])).export()
+university_page = scraper.UniversityPage()
 
-with open("calendar.ics", 'w') as file:
-    file.seek(0)
-    file.truncate()
-    file.write(output)
+# Get all events from all semesters
+# events = university_page.getEvents(input("name: "), input("password: "), semesters)
+events = university_page.getEvents("MGS31253", "oSgPS8D$hyUV", semesters)
+
+# Create calendar and add all events
+calendar = ics.Calendar(events=events)
+
+print(f"Total events found: {len(events)}")
+
+# Export to ics format
+with open("calendar.ics", 'w', encoding='utf-8') as file:
+    file.write(calendar.serialize())
+
+print("Calendar successfully exported to calendar.ics")
