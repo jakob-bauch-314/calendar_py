@@ -6,12 +6,21 @@ from datetime import datetime
 class OnlineEventDataBase:
 
     def __init__(self):
-        pass
+        self.base_url = None
+        self.login_url = None
+        self.name_field = None
+        self.password_field = None
+        self.login_button = None
 
     # abstract method page operations
 
     def login(self, page, name, password):
-        print("abstract method 'login' not implemented")
+        page.goto(f"{self.base_url}/{self.login_url}")
+        page.wait_for_load_state(f"networkidle")
+        page.fill(self.name_field, name)
+        page.fill(self.password_field, password)
+        page.click(self.login_button)
+        page.wait_for_load_state(f"networkidle")
 
     def logout(self, page):
         print("abstract method 'logout' not implemented")
@@ -70,19 +79,16 @@ class OnlineEventDataBase:
 class UniversityPage(OnlineEventDataBase):
 
     def __init__(self):
-        self.base_url = "https://campus.ku.de"
         self.schedule_url = "cst_pages/meinstundenplanstudent.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&tabkey=webtab_cst_lektionenstudent"
         self.field_name_prefix = "ctl00$WebPartManager1$gwp"
         self.login_name_prefix = "Login1$Login1$LoginMask"
         self.schedule_name_prefix = "MeinStundenplanStudent$MeinStundenplanStudent"
 
-    def login(self, page, name, password):
-        page.goto(f"{self.base_url}/Evt_Pages/Login.aspx")
-        page.wait_for_load_state(f"networkidle")
-        page.fill(f'input[name="{self.field_name_prefix}{self.login_name_prefix}$UserName"]', name)
-        page.fill(f'input[name="{self.field_name_prefix}{self.login_name_prefix}$Password"]', password)
-        page.click(f'input[name="{self.field_name_prefix}{self.login_name_prefix}$LoginButton"]')
-        page.wait_for_load_state(f"networkidle")
+        self.base_url = "https://campus.ku.de"
+        self.login_url = "Evt_Pages/Login.aspx"
+        self.name_field = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$UserName"]'
+        self.password_field = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$Password"]'
+        self.login_button = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$LoginButton"]'
     
     def extractTableFromSubpage(self, page, Subpage):
         # NAVIGATE TO SCHEDULE PAGE
