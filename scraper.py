@@ -1,104 +1,216 @@
 from playwright.sync_api import sync_playwright
+from datetime import datetime, timedelta
+from abc import ABC, abstractmethod
+from zoneinfo import ZoneInfo
 from lxml import etree, html
+
+import urllib.parse
+import semesters
+import requests
+import logging
+import json
 import ics
-from datetime import datetime
+import os
 
-class OnlineEventDataBase:
+logging.basicConfig(level=logging.INFO)
 
-    def __init__(self):
-        self.base_url = None
-        self.login_url = None
-        self.name_field = None
-        self.password_field = None
-        self.login_button = None
+class OnlineEventDataBase(ABC):
+    tz, base_url, login_url, name_field, password_field, login_button, logout_button = [None] * 7
 
-    # abstract method page operations
+    def __init__(self, name, password):
+        self.name = name
+        self.password = password
 
-    def login(self, page, name, password):
+    # page operations
+
+    def login(self, page):
         page.goto(f"{self.base_url}/{self.login_url}")
         page.wait_for_load_state(f"networkidle")
-        page.fill(self.name_field, name)
-        page.fill(self.password_field, password)
+        page.fill(self.name_field, self.name)
+        page.fill(self.password_field, self.password)
         page.click(self.login_button)
         page.wait_for_load_state(f"networkidle")
-
-    def logout(self, page):
-        print("abstract method 'logout' not implemented")
-
-    def navigateToBasePage(self, page):
-        print("abstract method 'navigateToBasePage' not implemented")
-
-    def navigateToSubpage(self, page, subpage_name):
-        print("abstract method 'navigateToSubPage' not implemented")
-
-    def extractTableFromSubpage(self, page, subpage_name):
-        print("abstract method 'extractTableFromSubpage' not implemented")
-
-    # abstract others
-
-    def getEventFromRow(self, row):
-        print("abstract method 'getEventsFromRow' not implemented")
     
-    # methods
+    def logout(self, page):
+        page.goto(f"{self.base_url}")
+        page.wait_for_load_state(f"networkidle")
+        page.click(self.logout_button)
+        page.wait_for_load_state(f"networkidle")
+    
+    # abstract methods
+    
+    @abstractmethod
+    def fetch_raw_data(self, page, subpage_name): # RETURNS ANYTHING
+        pass
 
-    def getEventsFromTable(self, table, skip=1):
-        events = []
-        
-        # Skip header rows and process data
-        for row in table[skip:]:
-            event = self.getEventFromRow(row)
-            if event:
-                events.append(event)
+    @abstractmethod
+    def parse_raw_data(self, raw_data) -> list:
+        pass
 
-        return events
+    @abstractmethod
+    def parse_event(self, raw_event, subpage_name) -> ics.Event | None:
+        pass
 
-    def getSubpageEvents(self, page, subpage_name):
-        table = self.extractTableFromSubpage(page, subpage_name)
-        return self.getEventsFromTable(table)
+    @abstractmethod
+    def get_subpage_name_list_from_dates(self, page, start, end) -> list[str]:
+        pass
+    
+    # export
 
-    def getEvents(self, name, password, subpage_name_list):
+    def export(self, start_date, end_date, filename, headless):
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)  # set True for headless
+            browser = p.chromium.launch(headless=headless)
             page = browser.new_page()
 
-            # LOGIN
-            self.login(page, name, password)
+            try:
+                self.login(page)
+            except Exception as e:
+                print(f"Can't log in: {e}")
+                return
+            
+            try:
+                subpage_name_list = self.get_subpage_name_list_from_dates(page, start_date, end_date)
+            except Exception as e:
+                print(f"Can't get subpage name list: {e}")
+                return
 
-            # GET EVENTS FOR EACH SUBPAGE
-            event_list = []
+            event_list = []            
             for subpage_name in subpage_name_list:
-                print(f"Fetching events for {subpage_name}...")
-                subpage_event_list = self.getSubpageEvents(page, subpage_name)
-                event_list.extend(subpage_event_list)
-                print(f"Found {len(event_list)} events for {subpage_name}")
 
+                logging.info(f"Fetching events for {subpage_name}...")
+
+                try:
+                    raw_data = self.fetch_raw_data(page, subpage_name)
+                except Exception as e:
+                    logging.warning(f"Can't fetch data: {e}")
+                    continue
+
+                try:
+                    data = self.parse_raw_data(raw_data)
+                except Exception as e:
+                    logging.warning(f"Can't parse data: {e}")
+                    continue
+
+                subpage_event_list = []
+                for raw_event in data:
+                    try:
+                        event = self.parse_event(raw_event, subpage_name)
+                    except Exception as e:
+                        logging.warning(f"Can't parse event: {e}")
+                        continue
+                    if event: # filter out None
+                        subpage_event_list.append(event)
+
+                logging.info(f"Found {len(subpage_event_list)} events for {subpage_name}")
+                event_list.extend(subpage_event_list)
+            
+            try:
+                self.logout(page)
+            except Exception as e:
+                logging.warning("Can't log out: {e}")
+    
             browser.close()
-            return event_list
+
+            calendar = ics.Calendar(events=event_list)
+            os.makedirs("calendars", exist_ok=True)
+            with open(f"calendars/{filename}", 'w', encoding='utf-8') as file:
+                file.write(calendar.serialize())
+
+    
+class WorkPage(OnlineEventDataBase):
+
+    # page
+    schedule_url = "teacher/course-index"
+    base_url = "https://schug-russer.icas7.de/app/#"
+    login_url = "login"
+
+    # elements
+    name_field = f'input[name="username"]'
+    password_field = f'input[name="password"]'
+    login_button = f'button[type="submit"]'
+    logout_button = f'button[ng-click="$ctrl.logout()"]'
+
+    # timezone
+    tz = ZoneInfo("Europe/Berlin")
+
+    def __init__(self, name, password, teacher_id):
+        super().__init__(name, password)
+        self.teacher_id = teacher_id
+
+    def fetch_raw_data(self, page, subpage_name):
+        page.locator("a", has_text="Kurse").click()
+        page.wait_for_timeout(1000)
+        cookies = page.context.cookies()
+        icas_cookie = next(c for c in cookies if c["name"] == "icas_user")
+        decoded = urllib.parse.unquote(icas_cookie["value"])
+        data = json.loads(decoded)
+        token = data["access_token"]
+
+        # request
+        return page.context.request.get(
+            "https://schug-russer.icas7.de/courselist",
+            params={
+                "present": subpage_name,
+                "teacher_id": self.teacher_id
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://schug-russer.icas7.de/app/",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        )
+    
+    def parse_raw_data(self, raw_data):
+        return raw_data.json()["courselist"]
+
+    def parse_event(self, raw_event, subpage_name):
+        if raw_event["course_members_excused"] >= raw_event["course_members_total"]:
+            return None
+        
+        students = [m["pupil_display_name"] for m in raw_event["course_member"]]
+        begin=datetime.strptime(f"{subpage_name} {raw_event['starts_at']}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz),
+        end=datetime.strptime(f"{subpage_name} {raw_event['ends_at']}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.tz),
+
+        return ics.Event(
+            name="Nachhilfe",
+            begin=begin,
+            end=end,
+            description=f"Fach {raw_event["subject_short"]},\nSchüler:\n{'\n'.join(students)}",
+            location=f"room {raw_event["room"]}"
+        )
+    
+    def get_subpage_name_list_from_dates(self, page, start_date, end_date):
+        return list(map(lambda x: (start_date + timedelta(days=x)).strftime("%Y-%m-%d"),range((end_date - start_date).days + 1)))
 
 class UniversityPage(OnlineEventDataBase):
 
-    def __init__(self):
-        self.schedule_url = "cst_pages/meinstundenplanstudent.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&tabkey=webtab_cst_lektionenstudent"
-        self.field_name_prefix = "ctl00$WebPartManager1$gwp"
-        self.login_name_prefix = "Login1$Login1$LoginMask"
-        self.schedule_name_prefix = "MeinStundenplanStudent$MeinStundenplanStudent"
-
-        self.base_url = "https://campus.ku.de"
-        self.login_url = "Evt_Pages/Login.aspx"
-        self.name_field = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$UserName"]'
-        self.password_field = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$Password"]'
-        self.login_button = f'input[name="{self.field_name_prefix}{self.login_name_prefix}$LoginButton"]'
+    # pages
+    schedule_url = "cst_pages/meinstundenplanstudent.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&tabkey=webtab_cst_lektionenstudent"
+    base_url = "https://campus.ku.de"
+    login_url = "Evt_Pages/Login.aspx"
     
-    def extractTableFromSubpage(self, page, Subpage):
+    # elements
+    field_name_prefix = "ctl00$WebPartManager1$gwp"
+    login_name_prefix = "Login1$Login1$LoginMask"
+    schedule_name_prefix = "MeinStundenplanStudent$MeinStundenplanStudent"
+    name_field = f'input[name="{field_name_prefix}{login_name_prefix}$UserName"]'
+    password_field = f'input[name="{field_name_prefix}{login_name_prefix}$Password"]'
+    login_button = f'input[name="{field_name_prefix}{login_name_prefix}$LoginButton"]'
+    logout_button = 'a[id="ctl00_lnkLogInOut"]'
+
+    # timezone
+    tz = ZoneInfo("Europe/Berlin")
+    
+    def fetch_raw_data(self, page, subpage_name):
         # NAVIGATE TO SCHEDULE PAGE
         page.goto(f"{self.base_url}/{self.schedule_url}")
         page.wait_for_load_state(f"networkidle")
-
-        # SELECT YEAR
-        page.select_option(f'select[name="{self.field_name_prefix}{self.schedule_name_prefix}$ddlPeriodeList"]', label=Subpage)
+        page.select_option(f'select[name="{self.field_name_prefix}{self.schedule_name_prefix}$ddlPeriodeList"]', label=subpage_name)
 
         # SEARCH FOR SCHEDULE
+
         page.click(f'input[name="{self.field_name_prefix}{self.schedule_name_prefix}$btnSearch2"]')
         page.wait_for_load_state(f"networkidle")
 
@@ -106,51 +218,41 @@ class UniversityPage(OnlineEventDataBase):
         page.goto(f"{self.base_url}/{self.schedule_url}&Print=true")
         page.wait_for_load_state(f"networkidle")
 
-        table = html.fromstring(page.content()).xpath(f'//table[contains(@class, "result-grid")]')[0][0]
-        return table
+        return page.content()
 
-    def getEventFromRow(self, row):
-        try:
-            # parsing data
-            datum = row[0][0].text.strip() if len(row) > 0 and len(row[0]) > 0 and row[0][0].text else ""
-            bezeichnung = row[1][0][1].text.strip() if len(row) > 1 and len(row[1][0]) > 1 and row[1][0][1].text else ""
-            raum = row[2][0].text.strip() if len(row) > 2 and len(row[2]) > 0 and row[2][0].text else ""
-            dozent = row[3][0].text.strip() if len(row) > 3 and len(row[3]) > 0 and row[3][0].text else ""
-            
-            # Construct link if available
-            link = ""
-            if len(row) > 1 and len(row[1][0]) > 1 and row[1][0][1].get(f"href"):
-                link = f"{self.base_url}/cst_pages/{"/".join(row[1][0][1].attrib["href"].split(f"/")[2:])}"
+    def parse_raw_data(self, raw_data):
+        return html.fromstring(raw_data).xpath(f'//table[contains(@class, "result-grid")]')[0][0][1:]
 
-            # Skip if no date information
-            if not datum:
-                return None
+    def parse_event(self, raw_event, subpage_name):
 
-            # preparing date
-            date, begin_time, _, end_time = tuple(datum.split(f" "))
-            year = int(date[6:10])
-            month = int(date[3:5])
-            day = int(date[0:2])
-            begin_hour = int(begin_time[0:2])
-            begin_minute = int(begin_time[3:5])
-            end_hour = int(end_time[0:2])
-            end_minute = int(end_time[3:5])
-            
-            begin = datetime(year, month, day, begin_hour, begin_minute, 0)
-            end = datetime(year, month, day, end_hour, end_minute, 0)
+        # parsing data
+        raw_date =  raw_event[0][0].text.strip() if len(raw_event) > 0 and len(raw_event[0]) > 0 and raw_event[0][0].text else ""
+        name =      raw_event[1][0][1].text.strip() if len(raw_event) > 1 and len(raw_event[1][0]) > 1 and raw_event[1][0][1].text else ""
+        room =      raw_event[2][0].text.strip() if len(raw_event) > 2 and len(raw_event[2]) > 0 and raw_event[2][0].text else ""
+        prof =      raw_event[3][0].text.strip() if len(raw_event) > 3 and len(raw_event[3]) > 0 and raw_event[3][0].text else ""
+        
+        # Construct link if available
+        link = ""
+        if len(raw_event) > 1 and len(raw_event[1][0]) > 1 and raw_event[1][0][1].get(f"href"):
+            link = f"{self.base_url}/cst_pages/{"/".join(raw_event[1][0][1].attrib["href"].split(f"/")[2:])}"
 
-            # Create ics event
-            event = ics.Event(
-                name=bezeichnung,
-                begin=begin,
-                end=end,
-                description=dozent,
-                url=link,
-                location=raum
-            )
-            
-            return event
-            
-        except Exception as e:
-            print(f"Error parsing event row: {e}")
+        # Skip if no date information
+        if not raw_date:
             return None
+
+        # preparing date
+        date_part, time_range = raw_date.split(" ", 1)
+        start_time, end_time = time_range.split(" - ")
+        begin = datetime.strptime(f"{date_part} {start_time}", "%d.%m.%Y %H:%M").replace(tzinfo=self.tz)
+        end   = datetime.strptime(f"{date_part} {end_time}", "%d.%m.%Y %H:%M").replace(tzinfo=self.tz)
+
+        # Create ics event
+        return ics.Event(name=name, begin=begin, end=end, description=prof, url=link, location=room)
+
+    def get_subpage_name_list_from_dates(self, page, start_date, end_date):
+
+        page.goto(f"{self.base_url}/{self.schedule_url}")
+        page.wait_for_load_state(f"networkidle")
+        all_options = page.locator(f'select[name="{self.field_name_prefix}{self.schedule_name_prefix}$ddlPeriodeList"] option').all_inner_texts()
+        options_in_time_range = list(map(semesters.index_to_text, range(semesters.semester_index(start_date), semesters.semester_index(end_date)+1)))
+        return list(set(all_options) & set(options_in_time_range))
