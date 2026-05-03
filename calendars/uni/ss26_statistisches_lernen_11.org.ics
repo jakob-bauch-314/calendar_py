@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ics.py - http://git.io/lLljaA
+BEGIN:VEVENT
+DESCRIPTION:Janjic\, Tijana
+DTEND:20260716T120000Z
+LOCATION:GEOG-101
+DTSTART:20260716T100000Z
+SUMMARY:Statistisches Lernen
+UID:ss26_statistisches_lernen_11
+URL:https://campus.ku.de/cst_pages/Brn_AnlassDetailAZ.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&IDAnlass=485280
+END:VEVENT
+END:VCALENDAR

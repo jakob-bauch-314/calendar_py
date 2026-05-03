@@ -1,1 +1,1 @@
-simple script to scrape calendar data from my University website
+simple script to scrape calendar data from my University website and add it to radicale

@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ics.py - http://git.io/lLljaA
+BEGIN:VEVENT
+DESCRIPTION:Krebs\, Johannes
+DTEND:20260608T100000Z
+LOCATION:Interim-008
+DTSTART:20260608T080000Z
+SUMMARY:Wahrscheinlichkeitstheorie
+UID:ss26_wahrscheinlichkeitstheorie_8
+URL:https://campus.ku.de/cst_pages/Brn_AnlassDetailAZ.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&IDAnlass=488520
+END:VEVENT
+END:VCALENDAR

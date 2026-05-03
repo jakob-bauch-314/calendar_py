@@ -1,0 +1,12 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ics.py - http://git.io/lLljaA
+BEGIN:VEVENT
+DESCRIPTION:Maur\, Imke von
+DTEND:20260414T134500Z
+DTSTART:20260414T121500Z
+SUMMARY:Phänomenologie: Research Seminar in Philosophy of Emotions
+UID:ss26_phaenomenologie_research_seminar_in_philosophy_of_emotions_1
+URL:https://campus.ku.de/cst_pages/Brn_AnlassDetailAZ.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&IDAnlass=486729
+END:VEVENT
+END:VCALENDAR

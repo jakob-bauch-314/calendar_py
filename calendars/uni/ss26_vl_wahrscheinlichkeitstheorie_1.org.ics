@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ics.py - http://git.io/lLljaA
+BEGIN:VEVENT
+DESCRIPTION:Stöger\, Dominik
+DTEND:20260413T160000Z
+LOCATION:GEOG-101
+DTSTART:20260413T140000Z
+SUMMARY:VL Wahrscheinlichkeitstheorie
+UID:ss26_vl_wahrscheinlichkeitstheorie_1
+URL:https://campus.ku.de/cst_pages/Brn_AnlassDetailAZ.aspx?node=48c364b0-3f23-4a58-a027-d7544585b0c4&IDAnlass=485354
+END:VEVENT
+END:VCALENDAR
