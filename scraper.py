@@ -213,6 +213,8 @@ class WorkEventSource(EventSource):
         self.teacher_id = teacher_id
 
     def fetch_raw_data(self, page, eventscope):
+        print("cant be executed because account could be banned, wait for next update")
+        return None
         page.locator("a", has_text="Kurse").click()
         page.wait_for_timeout(1000)
         cookies = page.context.cookies()
