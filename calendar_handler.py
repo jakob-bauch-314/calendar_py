@@ -5,12 +5,22 @@ from ics import Calendar
 import uuid
 from datetime import timezone, timedelta, datetime
 import text_engine
+from zoneinfo import ZoneInfo
 
 class RadicaleCalendar():
+
     file_ending = ".org.ics"
     def __init__(self, folder):
         self.folder = folder
         self.i = 0
+        os.makedirs(folder, exist_ok=True)
+
+        props_file_path = f"{folder}/.Radicale.props"
+        if not os.path.exists(props_file_path):
+            with open(props_file_path, 'w') as file:
+                file.write('{"tag": "VCALENDAR"}')
+        else:
+            pass
 
     def keys(self):
         return [filename[0:-len(self.file_ending)] for filename in os.listdir(self.folder) if filename.endswith(self.file_ending)]
@@ -27,7 +37,6 @@ class RadicaleCalendar():
     def __setitem__(self, uid, event):
         calendar = ics.Calendar(events=[event])
         path = os.path.join(self.folder, f"{uid}{self.file_ending}")
-        os.makedirs("calendars", exist_ok=True)
         with open(path, 'w', encoding='utf-8') as file:
             file.write(calendar.serialize())
 
@@ -48,8 +57,6 @@ class RadicaleCalendar():
         pass
 
     def mirror(self, events, start_date, end_date):
-        start_date = start_date.astimezone(timezone.utc)
-        end_date = end_date.astimezone(timezone.utc)
         for uid, event in self:
             event_begin = event.begin.to('UTC')
             if start_date < event_begin < end_date and uid not in [new_event.uid for new_event in events]:

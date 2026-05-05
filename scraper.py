@@ -4,9 +4,9 @@ from datetime import datetime, date, time, timedelta, timezone
 from abc import ABC, abstractmethod
 from lxml import etree, html
 from text_engine import normalize
+from zoneinfo import ZoneInfo
 
 import urllib.parse
-import semesters
 import requests
 import logging
 import json
@@ -15,6 +15,7 @@ import os
 import re
 
 logging.basicConfig(level=logging.INFO)
+tz=ZoneInfo("Europe/Berlin")
 
 class Event(ABC):
 
@@ -246,8 +247,8 @@ class WorkEventSource(EventSource):
             return None
         
         students = [m["pupil_display_name"] for m in raw_event["course_member"]]
-        begin = datetime.combine(eventscope.date, time.strptime(raw_event['starts_at'], "%H:%M:%S").time())
-        end = datetime.combine(eventscope.date, time.strptime(raw_event['ends_at'], "%H:%M:%S").time())
+        begin = datetime.combine(eventscope.date, time.strptime(raw_event['starts_at'], "%H:%M:%S").time()).replace(zinfo=tz)
+        end = datetime.combine(eventscope.date, time.strptime(raw_event['ends_at'], "%H:%M:%S").time()).replace(tzinfo=tz)
         subject = raw_event["subject_short"]
         room = raw_event["room"]
 
@@ -258,8 +259,8 @@ class WorkEventSource(EventSource):
 
 class Semester(EventScope):
 
-    wintersemester_start = datetime(70, 10, 1)
-    sommersemester_start = datetime(70, 4, 1)
+    wintersemester_start = datetime(70, 10, 1, tzinfo=tz)
+    sommersemester_start = datetime(70, 4, 1, tzinfo=tz)
 
     def __init__(self, index):
         self.index = index
@@ -369,8 +370,8 @@ class UniversityEventSource(EventSource):
         # preparing date
         date_part, time_range = raw_date.split(" ", 1)
         start_time, end_time = time_range.split(" - ")
-        begin = datetime.strptime(f"{date_part} {start_time}", "%d.%m.%Y %H:%M")
-        end   = datetime.strptime(f"{date_part} {end_time}", "%d.%m.%Y %H:%M")
+        begin = datetime.strptime(f"{date_part} {start_time}", "%d.%m.%Y %H:%M").replace(tzinfo=tz)
+        end   = datetime.strptime(f"{date_part} {end_time}", "%d.%m.%Y %H:%M").replace(tzinfo=tz)
 
         # Create ics event
         return UniversityEvent(begin, end, prof, room, name, link)
