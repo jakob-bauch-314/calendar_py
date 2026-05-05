@@ -32,6 +32,6 @@ radicale_calendar = RadicaleCalendar(args.path)
 cal = {
     "uni": UniversityEventSource,
     "work": WorkEventSource
-}[args.source](args.username, args.password).export(args.start, args.end, False)
+}[args.source](args.username, args.password).export(args.start, args.end, args.headless)
 
 radicale_calendar.mirror(cal.events, args.start, args.end)
